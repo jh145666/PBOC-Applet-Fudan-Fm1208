@@ -149,9 +149,6 @@ MF (3F00)
 5. 使用PSAM卡：在终端中使用PSAM卡进行密钥管理和MAC计算
 6. 加密交易数据：对敏感的交易数据进行加密传输
  
-📄 许可证
- 
-本项目采用 GNU General Public License v3.0 许可证，详情请参见 LICENSE 文件。
  
 ⚖️ 最终免责声明
  
