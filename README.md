@@ -58,7 +58,7 @@ AllInOneWallet - PBOC离线电子钱包安全测试applet
  
 环境要求
  
-- 一张空白或已解锁的JavaCard (推荐复旦FM1280)
+- 一张空白或已解锁的JavaCard (推荐复旦FM1280并且是关闭m1部分的，即sak=20)
 - 支持PC/SC的读卡器 (ACR122U、PCR532、Proxmark3等)
  
 编译
@@ -68,8 +68,8 @@ AllInOneWallet - PBOC离线电子钱包安全测试applet
  
 安装
  
-使用GlobalPlatformPro工具将编译好的CAP文件安装到智能卡。
- 
+使用GlobalPlatformPro工具将编译好的CAP文件安装到智能卡，需要安装作为默认选中的applet
+或者把applet文件发给商家，让商家帮你安装
 📖 完整指令集
  
 标准PBOC电子钱包指令
