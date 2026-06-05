@@ -1,103 +1,75 @@
-package com.fm1208.allinone;
+package com.emv.sim;
 
 import javacard.framework.*;
 import javacard.security.RandomData;
 
-public class AllInOneWallet extends Applet {
-
+public class PBOCWalletSim extends Applet {
     private static final byte[] APP_AID = {
-        (byte) 0xA0, 0x00, 0x00, 0x00,
-        0x03, (byte) 0x86, (byte) 0x98, 0x07, 0x01
+        (byte)0xA0, 0x00, 0x00, 0x00, 0x03, (byte)0x86, (byte)0x98, 0x07, 0x01
     };
 
-    private static final byte MAX_TRANSACTIONS = 10;
-    private static final byte TRANSACTION_RECORD_LENGTH = 32;
+    private static final short FILE_MF       = (short)0x3F00;
+    private static final short FILE_DF_1001  = (short)0x1001;
+    private static final short EF_MF_REC_0001= (short)0x0001;
+    private static final short EF_MF_BIN_0005= (short)0x0005;
+    private static final short EF_DF_REC_0001= (short)0x0001;
+    private static final short EF_DF_REC_0002= (short)0x0002;
+    private static final short EF_DF_BIN_0015= (short)0x0015;
+    private static final short EF_DF_BIN_0016= (short)0x0016;
+    private static final short EF_DF_REC_0018= (short)0x0018;
 
-    private static final byte TRANSACTION_TYPE_LOAD = 0x01;
-    private static final byte TRANSACTION_TYPE_PURCHASE = 0x02;
-    private static final byte TRANSACTION_TYPE_WITHDRAW = 0x03;
-
-    private static final short FILE_MF       = (short) 0x3F00;
-    private static final short FILE_DF_1001  = (short) 0x1001;
-    private static final short EF_MF_REC_0001 = (short) 0x0001;
-    private static final short EF_MF_BIN_0005 = (short) 0x0005;
-    private static final short EF_DF_REC_0001 = (short) 0x0001;
-    private static final short EF_DF_REC_0002 = (short) 0x0002;
-    private static final short EF_DF_BIN_0015 = (short) 0x0015;
-    private static final short EF_DF_BIN_0016 = (short) 0x0016;
-    private static final short EF_DF_REC_0018 = (short) 0x0018;
-
-    private static final byte[] MF_FCI_TEMPLATE = {
-        0x6F, 0x15,
-        (byte) 0x84, 0x0E,
-        '1','P','A','Y','.','S','Y','S','.','D','D','F','0','1',
-        (byte) 0xA5, 0x03,
-        (byte) 0x88, 0x01, 0x01
+    private static final byte[] MF_FCI = {
+        0x6F, 0x15, 0x84, 0x02, 0x3F, 0x00,
+        0xA5, 0x0F, (byte)0x88, 0x01, 0x38, (byte)0x9F,
+        0x11, 0x01, 0x01, (byte)0x9F, 0x12, 0x01,
+        0x00, (byte)0x9F, 0x13, 0x02, 0x00, 0x00
+    };
+    private static final byte[] DF_1001_FCI = {
+        0x6F, 0x17, 0x84, 0x02, 0x10, 0x01,
+        0xA5, 0x11, (byte)0x88, 0x01, 0x38, (byte)0x9F,
+        0x11, 0x01, 0x01, (byte)0x9F, 0x12, 0x01,
+        0x00, (byte)0x9F, 0x13, 0x02, 0x00, 0x00,
+        (byte)0x9F, 0x14, 0x01, 0x00
+    };
+    private static final byte[] RECORD_FCI = {
+        0x6F, 0x0F, 0x84, 0x02, 0x00, 0x00,
+        0xA5, 0x09, (byte)0x88, 0x01, 0x01, (byte)0x9F,
+        0x11, 0x01, 0x01, (byte)0x9F, 0x12, 0x01, 0x00
+    };
+    private static final byte[] BINARY_FCI = {
+        0x6F, 0x0F, 0x84, 0x02, 0x00, 0x00,
+        0xA5, 0x09, (byte)0x88, 0x01, 0x00, (byte)0x9F,
+        0x11, 0x01, 0x01, (byte)0x9F, 0x12, 0x01, 0x00
+    };
+    private static final byte[] APP_FCI = {
+        0x6F, 0x10, 0x84, 0x09,
+        (byte)0xA0, 0x00, 0x00, 0x00, 0x03, (byte)0x86, (byte)0x98, 0x07, 0x01,
+        0xA5, 0x03, (byte)0x88, 0x01, 0x00
     };
 
-    private static final byte[] DF_1001_FCI_TEMPLATE = {
-        0x6F, 0x17, (byte) 0x84, 0x02, 0x10, 0x01,
-        (byte) 0xA5, 0x11, (byte) 0x88, 0x01, 0x38, (byte) 0x9F,
-        0x11, 0x01, 0x01, (byte) 0x9F, 0x12, 0x01,
-        0x00, (byte) 0x9F, 0x13, 0x02, 0x00, 0x00,
-        (byte) 0x9F, 0x14, 0x01, 0x00
-    };
+    private static final byte INS_SELECT       = (byte)0xA4;
+    private static final byte INS_READ_BINARY  = (byte)0xB0;
+    private static final byte INS_READ_RECORD  = (byte)0xB2;
+    private static final byte INS_GET_BALANCE  = (byte)0x5C;
+    private static final byte INS_INIT_TRADE   = (byte)0x50;
+    private static final byte INS_DEBIT_52     = (byte)0x52;
+    private static final byte INS_DEBIT_54     = (byte)0x54;
+    private static final byte INS_PRIVATE_CA   = (byte)0x01;
+    private static final byte CLA_PRIVATE_CA   = (byte)0xCA;
 
-    private static final byte[] EF_RECORD_FCI_TEMPLATE = {
-        0x6F, 0x0F, (byte) 0x84, 0x02, 0x00, 0x00,
-        (byte) 0xA5, 0x09, (byte) 0x88, 0x01, 0x01, (byte) 0x9F,
-        0x11, 0x01, 0x01, (byte) 0x9F, 0x12, 0x01, 0x00
-    };
+    private static final byte TRADE_LOAD       = 0x03;
+    private static final byte TRADE_CONSUME    = 0x01;
+    private static final byte[] FIXED_MAC2     = {0x43, 0x53, 0x4D, (byte)0xB6};
+    private static final byte[] FIXED_RND      = {0x79, 0x62, 0x2A, 0x11};
+    private static final short BALANCE_LEN     = 4;
+    private static final short MAC_LEN         = 4;
 
-    private static final byte[] EF_BINARY_FCI_TEMPLATE = {
-        0x6F, 0x0F, (byte) 0x84, 0x02, 0x00, 0x00,
-        (byte) 0xA5, 0x09, (byte) 0x88, 0x01, 0x00, (byte) 0x9F,
-        0x11, 0x01, 0x01, (byte) 0x9F, 0x12, 0x01, 0x00
-    };
-
-    private static final byte[] APP_FCI_TEMPLATE = {
-        0x6F, 0x10, (byte) 0x84, 0x09,
-        (byte) 0xA0, 0x00, 0x00, 0x00, 0x03, (byte) 0x86, (byte) 0x98, 0x07, 0x01,
-        (byte) 0xA5, 0x03, (byte) 0x88, 0x01, 0x00
-    };
-
-    private static final byte CLA_PRIVATE_CA = (byte) 0xCA;
-    private static final byte INS_PRIVATE_CA = (byte) 0x01;
-    private static final byte[] PRIVATE_CA_FIXED_RESP = {(byte)0xCA, 0x01, (byte)0xF3, 0x38};
-
-    private static final byte INS_SELECT       = (byte) 0xA4;
-    private static final byte INS_READ_BINARY  = (byte) 0xB0;
-    private static final byte INS_READ_RECORD  = (byte) 0xB2;
-    private static final byte INS_GET_BALANCE  = (byte) 0x5C;
-    private static final byte INS_INIT_TRADE   = (byte) 0x50;
-    private static final byte INS_DEBIT_52     = (byte) 0x52;
-    private static final byte INS_DEBIT_54     = (byte) 0x54;
-    private static final byte INS_VERIFY_PIN   = (byte) 0x20;
-    private static final byte INS_EXTERNAL_AUTH = (byte) 0x82;
-    private static final byte INS_GET_CHALLENGE = (byte) 0x84;
-
-    private static final byte TRADE_TYPE_LOAD    = 0x03;
-    private static final byte TRADE_TYPE_CONSUME = 0x01;
-
-    private static final short SW_SUCCESS        = (short) 0x9000;
-    private static final short SW_CLA_NOT_SUPPORTED = (short) 0x6E00;
-    private static final short SW_INS_NOT_SUPPORTED = (short) 0x6D00;
-    private static final short SW_CONDITIONS_NOT_SATISFIED = (short) 0x6985;
-    private static final short SW_BALANCE_INSUFFICIENT = (short) 0x6A80;
-    private static final short SW_FILE_NOT_FOUND = (short) 0x6A82;
-    private static final short SW_RECORD_NOT_FOUND = (short) 0x6A83;
-    private static final short SW_WRONG_P1P2 = (short) 0x6A86;
-
-    private static final byte BALANCE_LENGTH = 4;
-    private static final byte MAC_LENGTH = 4;
-    private static final byte[] FIXED_MAC2 = {0x43, 0x53, 0x4D, (byte)0xB6};
-    private static final byte[] FIXED_CARD_RANDOM = {0x79, 0x62, 0x2A, 0x11};
-
-    private final byte[] ecBalance;
-    private final byte[] transactionRecords;
-    private byte transactionCount;
+    private final byte[] balance;
+    private byte[] transLog;
+    private byte transCount;
     private byte nextTransIdx;
     private short currentDir;
+    private short currentFile;
 
     private final byte[] mfRec0001 = new byte[16];
     private final byte[] mfBin0005 = new byte[16];
@@ -106,31 +78,29 @@ public class AllInOneWallet extends Applet {
     private final byte[] dfBin0015 = new byte[16];
     private final byte[] dfBin0016 = new byte[16];
 
-    private final byte[] tradeContext;
+    private final byte[] tradeCtx;
     private final boolean[] tradeInit;
     private final byte[] challenge;
-    private final byte[] tmpBuf;
     private final RandomData rnd;
 
-    private AllInOneWallet() {
+    private PBOCWalletSim() {
         rnd = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
-        ecBalance = new byte[BALANCE_LENGTH];
-        Util.setShort(ecBalance, (short)2, (short)0x0BB8);
-
-        transactionRecords = new byte[(short)(MAX_TRANSACTIONS * TRANSACTION_RECORD_LENGTH)];
-        transactionCount = 0;
+        balance = new byte[BALANCE_LEN];
+        Util.setShort(balance, (short)2, (short)0x0BB8);
+        transLog = new byte[(short)(10 * 32)];
+        transCount = 0;
         nextTransIdx = 0;
         currentDir = FILE_MF;
+        currentFile = 0;
 
-        tradeContext = JCSystem.makeTransientByteArray((short)12, JCSystem.CLEAR_ON_DESELECT);
+        tradeCtx = JCSystem.makeTransientByteArray((short)12, JCSystem.CLEAR_ON_DESELECT);
         tradeInit = JCSystem.makeTransientBooleanArray((short)1, JCSystem.CLEAR_ON_DESELECT);
         challenge = JCSystem.makeTransientByteArray((short)8, JCSystem.CLEAR_ON_DESELECT);
-        tmpBuf = JCSystem.makeTransientByteArray((short)32, JCSystem.CLEAR_ON_DESELECT);
         register(APP_AID, (short)0, (byte)APP_AID.length);
     }
 
     public static void install(byte[] b, short o, byte l) {
-        new AllInOneWallet();
+        new PBOCWalletSim();
     }
 
     public void process(APDU apdu) throws ISOException {
@@ -144,12 +114,13 @@ public class AllInOneWallet extends Applet {
         }
 
         if (cla != 0x00 && cla != (byte)0x80 && cla != CLA_PRIVATE_CA) {
-            ISOException.throwIt(SW_CLA_NOT_SUPPORTED);
+            ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
         }
 
         if (selectingApplet()) {
+            sendFCI(apdu, MF_FCI);
             currentDir = FILE_MF;
-            sendFCI(apdu, MF_FCI_TEMPLATE);
+            currentFile = 0;
             return;
         }
 
@@ -157,17 +128,16 @@ public class AllInOneWallet extends Applet {
             case INS_SELECT:       selectFile(apdu); break;
             case INS_READ_BINARY:  readBinary(apdu); break;
             case INS_READ_RECORD:  readRecord(apdu); break;
-            case INS_VERIFY_PIN:
-            case INS_EXTERNAL_AUTH:
-                ISOException.throwIt(SW_SUCCESS);
+            case 0x20: case (byte)0x82:
+                ISOException.throwIt(ISO7816.SW_NO_ERROR);
                 break;
-            case INS_GET_CHALLENGE: getChallenge(apdu); break;
-            case INS_GET_BALANCE:   getBalance(apdu); break;
-            case INS_INIT_TRADE:    initTrade(apdu); break;
-            case INS_DEBIT_52:      debit52(apdu); break;
-            case INS_DEBIT_54:      debit54(apdu); break;
-            case INS_PRIVATE_CA:    privateCA(apdu); break;
-            default: ISOException.throwIt(SW_INS_NOT_SUPPORTED);
+            case 0x84: getChallenge(apdu); break;
+            case INS_GET_BALANCE: getBalance(apdu); break;
+            case INS_INIT_TRADE:  initTrade(apdu); break;
+            case INS_DEBIT_52:    debit52(apdu); break;
+            case INS_DEBIT_54:    debit54(apdu); break;
+            case INS_PRIVATE_CA:  privateCA(apdu); break;
+            default: ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }
     }
 
@@ -182,35 +152,51 @@ public class AllInOneWallet extends Applet {
 
             if (fileId == FILE_MF) {
                 currentDir = FILE_MF;
-                sendFCI(apdu, MF_FCI_TEMPLATE);
+                currentFile = 0;
+                sendFCI(apdu, MF_FCI);
                 return;
             }
             if (fileId == FILE_DF_1001) {
                 currentDir = FILE_DF_1001;
-                sendFCI(apdu, DF_1001_FCI_TEMPLATE);
+                currentFile = 0;
+                sendFCI(apdu, DF_1001_FCI);
                 return;
             }
             if (currentDir == FILE_MF) {
-                if (fileId == EF_MF_REC_0001) { sendRecordFCI(apdu, fileId); return; }
-                if (fileId == EF_MF_BIN_0005) { sendBinaryFCI(apdu, fileId); return; }
+                if (fileId == EF_MF_REC_0001) {
+                    currentFile = fileId;
+                    sendRecordFCI(apdu, fileId);
+                    return;
+                }
+                if (fileId == EF_MF_BIN_0005) {
+                    currentFile = fileId;
+                    sendBinaryFCI(apdu, fileId);
+                    return;
+                }
             } else if (currentDir == FILE_DF_1001) {
                 if (fileId == EF_DF_REC_0001 || fileId == EF_DF_REC_0002 || fileId == EF_DF_REC_0018) {
-                    sendRecordFCI(apdu, fileId); return;
+                    currentFile = fileId;
+                    sendRecordFCI(apdu, fileId);
+                    return;
                 }
                 if (fileId == EF_DF_BIN_0015 || fileId == EF_DF_BIN_0016) {
-                    sendBinaryFCI(apdu, fileId); return;
+                    currentFile = fileId;
+                    sendBinaryFCI(apdu, fileId);
+                    return;
                 }
             }
-            ISOException.throwIt(SW_FILE_NOT_FOUND);
+            ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
         }
+
         if (p1 == 0x04 && lc == 9) {
             if (Util.arrayCompare(buf, ISO7816.OFFSET_CDATA, APP_AID, (short)0, (short)9) == 0) {
+                sendFCI(apdu, APP_FCI);
                 currentDir = FILE_MF;
-                sendFCI(apdu, APP_FCI_TEMPLATE);
+                currentFile = 0;
                 return;
             }
         }
-        ISOException.throwIt(SW_WRONG_P1P2);
+        ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
     }
 
     private void sendFCI(APDU apdu, byte[] fci) {
@@ -219,47 +205,38 @@ public class AllInOneWallet extends Applet {
         apdu.sendBytesLong(fci, (short)0, (short)fci.length);
     }
 
-    private void sendRecordFCI(APDU apdu, short fileId) {
-        byte[] fci = new byte[EF_RECORD_FCI_TEMPLATE.length];
-        Util.arrayCopy(EF_RECORD_FCI_TEMPLATE, (short)0, fci, (short)0, (short)EF_RECORD_FCI_TEMPLATE.length);
-        Util.setShort(fci, (short)4, fileId);
+    private void sendRecordFCI(APDU apdu, short fid) {
+        byte[] fci = new byte[RECORD_FCI.length];
+        Util.arrayCopy(RECORD_FCI, (short)0, fci, (short)0, (short)RECORD_FCI.length);
+        Util.setShort(fci, (short)4, fid);
         sendFCI(apdu, fci);
     }
 
-    private void sendBinaryFCI(APDU apdu, short fileId) {
-        byte[] fci = new byte[EF_BINARY_FCI_TEMPLATE.length];
-        Util.arrayCopy(EF_BINARY_FCI_TEMPLATE, (short)0, fci, (short)0, (short)EF_BINARY_FCI_TEMPLATE.length);
-        Util.setShort(fci, (short)4, fileId);
+    private void sendBinaryFCI(APDU apdu, short fid) {
+        byte[] fci = new byte[BINARY_FCI.length];
+        Util.arrayCopy(BINARY_FCI, (short)0, fci, (short)0, (short)BINARY_FCI.length);
+        Util.setShort(fci, (short)4, fid);
         sendFCI(apdu, fci);
     }
 
     private void readBinary(APDU apdu) {
         byte[] buf = apdu.getBuffer();
-        byte p1 = buf[ISO7816.OFFSET_P1];
-        byte p2 = buf[ISO7816.OFFSET_P2];
+        short offset = Util.makeShort((byte)(buf[ISO7816.OFFSET_P1] & 0x7F), buf[ISO7816.OFFSET_P2]);
         short le = apdu.setOutgoing();
-
-        short fileId = 0;
-        short offset = 0;
-        if ((p1 & 0x80) != 0) {
-            fileId = (short)(p1 & 0x1F);
-            offset = (short)(p2 & 0xFF);
-        } else {
-            offset = Util.makeShort(p1, p2);
-        }
-
+        
         byte[] data = null;
-        if (currentDir == FILE_MF) {
-            if (fileId == EF_MF_BIN_0005 || fileId == 0) data = mfBin0005;
-        } else if (currentDir == FILE_DF_1001) {
-            if (fileId == EF_DF_BIN_0015 || fileId == 0) data = dfBin0015;
-            else if (fileId == EF_DF_BIN_0016) data = dfBin0016;
+        switch (currentFile) {
+            case EF_MF_BIN_0005: data = mfBin0005; break;
+            case EF_DF_BIN_0015: data = dfBin0015; break;
+            case EF_DF_BIN_0016: data = dfBin0016; break;
+            default: ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
-        if (data == null) ISOException.throwIt(SW_FILE_NOT_FOUND);
-
-        short avail = (short)(data.length - offset);
-        if (avail <= 0) ISOException.throwIt(SW_WRONG_P1P2);
-        short len = (le < avail) ? le : avail;
+        
+        if (offset >= data.length) {
+            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+        }
+        
+        short len = (le < (short)(data.length - offset)) ? le : (short)(data.length - offset);
         Util.arrayCopy(data, offset, buf, (short)0, len);
         apdu.setOutgoingAndSend((short)0, len);
     }
@@ -269,150 +246,42 @@ public class AllInOneWallet extends Applet {
         byte p1 = buf[ISO7816.OFFSET_P1];
         byte p2 = buf[ISO7816.OFFSET_P2];
         short le = apdu.setOutgoing();
-
-        if ((p2 & 0x07) != 0x04) ISOException.throwIt(SW_RECORD_NOT_FOUND);
-
-        short fileId = 0;
-        if ((p2 & 0x1F) != 0) {
-            fileId = (short)((p2 >> 3) & 0x1F);
-        }
-
-        if ((currentDir == FILE_DF_1001) && (fileId == EF_DF_REC_0018 || fileId == 0)) {
-            try {
-                short recNo = (short)(p1 & 0xFF);
-                getTransactionRecord(recNo, tmpBuf, (short)0);
-                buf[0] = (byte)0x70;
-                buf[1] = (byte)0x20;
-                Util.arrayCopy(tmpBuf, (short)0, buf, (short)2, (short)32);
-                short len = (le > 34) ? 34 : le;
-                apdu.setOutgoingAndSend((short)0, len);
-                return;
-            } catch (ISOException e) {
-                if (e.getReason() == SW_RECORD_NOT_FOUND) {
-                    Util.arrayFillNonAtomic(buf, (short)0, le, (byte)0x00);
-                    apdu.setOutgoingAndSend((short)0, le);
-                    return;
-                }
-                throw e;
-            }
-        }
-
+        
+        if ((p2 & 0x07) != 0x04) ISOException.throwIt((short)0x6A83);
+        
         byte[] data = null;
+        short offset = 0;
         short maxLen = 0;
-        if (currentDir == FILE_MF) {
-            if (fileId == EF_MF_REC_0001 || fileId == 0) { data = mfRec0001; maxLen = 16; }
-        } else if (currentDir == FILE_DF_1001) {
-            if (fileId == EF_DF_REC_0001 || fileId == 0) { data = dfRec0001; maxLen = 48; }
-            else if (fileId == EF_DF_REC_0002) { data = dfRec0002; maxLen = 32; }
+        
+        switch (currentFile) {
+            case EF_MF_REC_0001: 
+                data = mfRec0001; 
+                maxLen = 16; 
+                break;
+            case EF_DF_REC_0001: 
+                data = dfRec0001; 
+                maxLen = 48; 
+                break;
+            case EF_DF_REC_0002: 
+                data = dfRec0002; 
+                maxLen = 32; 
+                break;
+            case EF_DF_REC_0018:
+                if (p1 < 1 || p1 > transCount) {
+                    ISOException.throwIt((short)0x6A83);
+                }
+                short recordIdx = (short)((nextTransIdx - p1 + 10) % 10);
+                data = transLog;
+                offset = (short)(recordIdx * 32);
+                maxLen = 32;
+                break;
+            default: 
+                ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
-        if (data == null) ISOException.throwIt(SW_FILE_NOT_FOUND);
+        
         short len = (le < maxLen) ? le : maxLen;
-        Util.arrayCopy(data, (short)0, buf, (short)0, len);
+        Util.arrayCopy(data, offset, buf, (short)0, len);
         apdu.setOutgoingAndSend((short)0, len);
-    }
-
-    private void getTransactionRecord(short recNo, byte[] outBuf, short outOff) {
-        if (recNo < 1 || recNo > transactionCount) ISOException.throwIt(SW_RECORD_NOT_FOUND);
-        short idx = (short)((nextTransIdx - recNo + MAX_TRANSACTIONS) % MAX_TRANSACTIONS);
-        short base = (short)(idx * TRANSACTION_RECORD_LENGTH);
-        Util.arrayCopyNonAtomic(transactionRecords, base, outBuf, outOff, TRANSACTION_RECORD_LENGTH);
-    }
-
-    private void addTransactionRecord(byte type, byte[] amount, short amtOff, byte[] atc, short atcOff) {
-        short base = (short)(nextTransIdx * TRANSACTION_RECORD_LENGTH);
-        Util.arrayFillNonAtomic(transactionRecords, base, TRANSACTION_RECORD_LENGTH, (byte)0x00);
-        transactionRecords[base] = type;
-        Util.arrayCopy(amount, amtOff, transactionRecords, (short)(base+1), BALANCE_LENGTH);
-        Util.arrayCopy(atc, atcOff, transactionRecords, (short)(base+5), (short)2);
-        transactionRecords[(short)(base+7)] = 0x01;
-        transactionRecords[(short)(base+8)] = 0x26;
-        transactionRecords[(short)(base+9)] = 0x05;
-        transactionRecords[(short)(base+10)] = 0x10;
-        transactionRecords[(short)(base+11)] = 0x15;
-        transactionRecords[(short)(base+12)] = 0x30;
-        transactionRecords[(short)(base+13)] = 0x00;
-        nextTransIdx = (byte)((nextTransIdx + 1) % MAX_TRANSACTIONS);
-        if (transactionCount < MAX_TRANSACTIONS) transactionCount++;
-    }
-
-    private void getBalance(APDU apdu) {
-        byte[] buf = apdu.getBuffer();
-        Util.arrayCopy(ecBalance, (short)0, buf, (short)0, BALANCE_LENGTH);
-        apdu.setOutgoingAndSend((short)0, BALANCE_LENGTH);
-    }
-
-    private void initTrade(APDU apdu) {
-        byte[] buf = apdu.getBuffer();
-        byte p1 = buf[ISO7816.OFFSET_P1];
-        byte tradeType = (p1 == 0x00) ? TRADE_TYPE_LOAD : TRADE_TYPE_CONSUME;
-        tradeContext[0] = tradeType;
-
-        Util.arrayCopy(buf, (short)(ISO7816.OFFSET_CDATA + 1), tradeContext, (short)2, BALANCE_LENGTH);
-
-        if (tradeType != TRADE_TYPE_LOAD && !sufficient(ecBalance, tradeContext, (short)2)) {
-            ISOException.throwIt(SW_BALANCE_INSUFFICIENT);
-        }
-
-        short off = 0;
-        Util.arrayCopy(ecBalance, (short)0, buf, off, BALANCE_LENGTH); off += BALANCE_LENGTH;
-        byte[] atc = (tradeType == TRADE_TYPE_LOAD) ? new byte[]{0x00, 0x27} : new byte[]{0x00, 0x26};
-        Util.arrayCopy(atc, (short)0, buf, off, (short)2); off += 2;
-        buf[off++] = 0x01; buf[off++] = 0x01;
-        Util.arrayCopy(FIXED_CARD_RANDOM, (short)0, buf, off, (short)4); off += 4;
-        buf[off++] = (byte)0xCC; buf[off++] = 0x27; buf[off++] = 0x55; buf[off++] = (byte)0x90;
-        Util.arrayCopy(atc, (short)0, tmpBuf, (short)0, (short)2);
-
-        tradeInit[0] = true;
-        apdu.setOutgoingAndSend((short)0, off);
-    }
-
-    private void debit52(APDU apdu) {
-        if (!tradeInit[0]) ISOException.throwIt(SW_CONDITIONS_NOT_SATISFIED);
-        apdu.setIncomingAndReceive();
-
-        byte tradeType = tradeContext[0];
-        byte recType;
-        JCSystem.beginTransaction();
-        try {
-            if (tradeType == TRADE_TYPE_LOAD) {
-                add(ecBalance, tradeContext, (short)2);
-                recType = TRANSACTION_TYPE_LOAD;
-            } else {
-                sub(ecBalance, tradeContext, (short)2);
-                recType = TRANSACTION_TYPE_PURCHASE;
-            }
-            addTransactionRecord(recType, tradeContext, (short)2, tmpBuf, (short)0);
-            JCSystem.commitTransaction();
-        } catch (Exception e) {
-            JCSystem.abortTransaction();
-            ISOException.throwIt(SW_CONDITIONS_NOT_SATISFIED);
-        }
-        tradeInit[0] = false;
-        byte[] buf = apdu.getBuffer();
-        Util.arrayCopy(FIXED_MAC2, (short)0, buf, (short)0, MAC_LENGTH);
-        apdu.setOutgoingAndSend((short)0, MAC_LENGTH);
-    }
-
-    private void debit54(APDU apdu) {
-        if (!tradeInit[0]) ISOException.throwIt(SW_CONDITIONS_NOT_SATISFIED);
-        apdu.setIncomingAndReceive();
-
-        JCSystem.beginTransaction();
-        try {
-            sub(ecBalance, tradeContext, (short)2);
-            byte[] atc = {0x00, 0x26};
-            addTransactionRecord(TRANSACTION_TYPE_PURCHASE, tradeContext, (short)2, atc, (short)0);
-            JCSystem.commitTransaction();
-        } catch (Exception e) {
-            JCSystem.abortTransaction();
-            ISOException.throwIt(SW_CONDITIONS_NOT_SATISFIED);
-        }
-        tradeInit[0] = false;
-        byte[] buf = apdu.getBuffer();
-        short off = 0;
-        Util.arrayCopy(FIXED_MAC2, (short)0, buf, off, MAC_LENGTH); off += MAC_LENGTH;
-        buf[off++] = 0x00; buf[off++] = 0x00; buf[off++] = 0x00; buf[off++] = 0x01;
-        apdu.setOutgoingAndSend((short)0, off);
     }
 
     private void getChallenge(APDU apdu) {
@@ -422,10 +291,114 @@ public class AllInOneWallet extends Applet {
         apdu.setOutgoingAndSend((short)0, (short)8);
     }
 
+    private void getBalance(APDU apdu) {
+        byte[] buf = apdu.getBuffer();
+        Util.arrayCopy(balance, (short)0, buf, (short)0, BALANCE_LEN);
+        apdu.setOutgoingAndSend((short)0, BALANCE_LEN);
+    }
+
+    private void initTrade(APDU apdu) {
+        byte[] buf = apdu.getBuffer();
+        byte p1 = buf[ISO7816.OFFSET_P1];
+        byte tradeType = TRADE_CONSUME;
+        if (p1 == 0x00) tradeType = TRADE_LOAD;
+        else if (p1 == 0x01) tradeType = TRADE_CONSUME;
+        else if (p1 == 0x02) tradeType = 0x02;
+        tradeCtx[0] = tradeType;
+
+        short dataOff = ISO7816.OFFSET_CDATA + 1;
+        Util.arrayCopy(buf, dataOff, tradeCtx, (short)2, BALANCE_LEN);
+
+        if (tradeType != TRADE_LOAD) {
+            if (!sufficient(balance, tradeCtx, (short)2))
+                ISOException.throwIt((short)0x6A80);
+        }
+
+        short off = 0;
+        Util.arrayCopy(balance, (short)0, buf, off, BALANCE_LEN); off += BALANCE_LEN;
+        byte[] atc = new byte[2];
+        if (tradeType == TRADE_LOAD) { atc[0] = 0x00; atc[1] = 0x27; }
+        else                         { atc[0] = 0x00; atc[1] = 0x26; }
+        Util.arrayCopy(atc, (short)0, buf, off, (short)2); off += 2;
+        buf[off++] = 0x01;
+        buf[off++] = 0x01;
+        Util.arrayCopy(FIXED_RND, (short)0, buf, off, (short)4); off += 4;
+        buf[off++] = (byte)0xCC; buf[off++] = 0x27;
+        buf[off++] = 0x55; buf[off++] = (byte)0x90;
+        Util.arrayCopy(atc, (short)0, tradeCtx, (short)6, (short)2);
+
+        tradeInit[0] = true;
+        apdu.setOutgoingAndSend((short)0, off);
+    }
+
+    private void debit52(APDU apdu) {
+        if (!tradeInit[0]) ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+        apdu.setIncomingAndReceive();
+
+        byte tradeType = tradeCtx[0];
+        byte recType;
+        JCSystem.beginTransaction();
+        try {
+            if (tradeType == TRADE_LOAD) {
+                add(balance, tradeCtx, (short)2);
+                recType = 0x01;
+            } else {
+                sub(balance, tradeCtx, (short)2);
+                recType = 0x02;
+            }
+            addTransRecord(recType, tradeCtx, (short)2, tradeCtx, (short)6);
+            JCSystem.commitTransaction();
+        } catch (Exception e) {
+            JCSystem.abortTransaction();
+            ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+        }
+        tradeInit[0] = false;
+        byte[] buf = apdu.getBuffer();
+        Util.arrayCopy(FIXED_MAC2, (short)0, buf, (short)0, MAC_LEN);
+        apdu.setOutgoingAndSend((short)0, MAC_LEN);
+    }
+
+    private void debit54(APDU apdu) {
+        if (!tradeInit[0]) ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+        apdu.setIncomingAndReceive();
+
+        JCSystem.beginTransaction();
+        try {
+            sub(balance, tradeCtx, (short)2);
+            byte[] atc = {0x00, 0x26};
+            addTransRecord(0x02, tradeCtx, (short)2, atc, (short)0);
+            JCSystem.commitTransaction();
+        } catch (Exception e) {
+            JCSystem.abortTransaction();
+            ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+        }
+        tradeInit[0] = false;
+        byte[] buf = apdu.getBuffer();
+        short off = 0;
+        Util.arrayCopy(FIXED_MAC2, (short)0, buf, off, MAC_LEN); off += MAC_LEN;
+        buf[off++] = 0x00; buf[off++] = 0x00;
+        buf[off++] = 0x00; buf[off++] = 0x01;
+        apdu.setOutgoingAndSend((short)0, off);
+    }
+
     private void privateCA(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         buf[0] = (byte)0xCA; buf[1] = 0x01; buf[2] = (byte)0xF3; buf[3] = 0x38;
         apdu.setOutgoingAndSend((short)0, (short)4);
+    }
+
+    private void addTransRecord(byte type, byte[] amount, short amtOff, byte[] atc, short atcOff) {
+        short base = (short)(nextTransIdx * 32);
+        Util.arrayFillNonAtomic(transLog, base, (short)32, (byte)0x00);
+        transLog[base] = type;
+        Util.arrayCopy(amount, amtOff, transLog, (short)(base+1), (short)4);
+        Util.arrayCopy(atc, atcOff, transLog, (short)(base+5), (short)2);
+        transLog[(short)(base+7)] = 0x01;
+        transLog[(short)(base+8)] = 0x26; transLog[(short)(base+9)] = 0x05;
+        transLog[(short)(base+10)] = 0x10; transLog[(short)(base+11)] = 0x15;
+        transLog[(short)(base+12)] = 0x30; transLog[(short)(base+13)] = 0x00;
+        nextTransIdx = (byte)((nextTransIdx + 1) % 10);
+        if (transCount < 10) transCount++;
     }
 
     private boolean sufficient(byte[] bal, byte[] amt, short off) {
@@ -455,7 +428,8 @@ public class AllInOneWallet extends Applet {
 
     public void deselect() {
         tradeInit[0] = false;
-        Util.arrayFillNonAtomic(tradeContext, (short)0, (short)12, (byte)0x00);
+        Util.arrayFillNonAtomic(tradeCtx, (short)0, (short)12, (byte)0x00);
         currentDir = FILE_MF;
+        currentFile = 0;
     }
 }
