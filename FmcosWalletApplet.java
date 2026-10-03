@@ -11,53 +11,9 @@ import javacard.security.DESKey;
 import javacard.security.KeyBuilder;
 import javacard.security.RandomData;
 
-/**
- * FMcos 钱包 Applet v2 —— 统一文件系统版
- * =====================================================
- *
- * 在 v1 钱包命令（FM1208/GB/T 16791 逐字节兼容）基础上，合并实现完整
- * FMCOS 2.0 文件系统，与 Android 工具箱“文件系统”页完全互操作：
- *
- * 默认文件结构（严格遵守 FMCOS 命令规则）：
- *
- *   MF (3F00)
- *   ├── EF 0001  卡信息记录   定长记录 1×16   SFI=01（兼作 MF 目录）
- *   ├── EF 0005  卡序列号     二进制 16       SFI=05
- *   └── DF 1001  电子钱包应用目录（AID = A00000000386980701）
- *       ├── EF 0001  应用基本信息  定长记录 1×48  SFI=01
- *       ├── EF 0002  应用参数      定长记录 1×32  SFI=02
- *       ├── EF 0015  公钥信息      二进制 16      SFI=21
- *       ├── EF 0016  私钥信息      二进制 16      SFI=22
- *       └── EF 0018  交易记录      循环 10×23     SFI=24
- *
- * 支持命令：
- *   00 A4  选择文件   P1=00 FID / P1=04 名称（PSE、钱包 AID）；P2=00 回 FCI、P2=0C 不回
- *   00 B0  读二进制   P1 最高位=1 → SFI 选择；否则 P1P2=偏移（当前文件）
- *   00 D6  写二进制   同上偏移规则
- *   00 B2  读记录     P2 低 3 位必须 100；P1=记录号（循环文件 01=最新）；Le=00 整条
- *   00 DC  写记录     定长记录文件
- *   00 E2  追加记录   循环/定长记录文件
- *   80 E0  建立文件   头部：28=二进制 2A=定长 2E=循环 38=DF
- *   80 E4  删除文件   仅限动态建立的文件
- *   00 C0  GET RESPONSE
- *   00 84  GET CHALLENGE（8 字节随机数）
- *   00 82  外部认证    默认（不启用认证）直接通过
- *   00 88  内部认证    DES 运算（密钥未配置时回随机数）
- *   00 20  VERIFY PIN
- *   80 5C  读余额      P2=01 电子存折 / 02 电子钱包（默认双钱包，各 30.00 元）
- *   80 50  交易初始化  P1=00 圈存 / 01 消费
- *   80 52  圈存        （TAC 应答）
- *   80 54  消费        （TAC+MAC2 应答）
- *   80 CA  读配置（Applet 设置页）
- *   80 DC  写配置（Applet 设置页）
- *
- * 交易成功后自动写入 0018 交易记录（可经 80DC tag 09 关闭）。
- * 默认不验证终端 MAC 与 PIN（80DC tag 05 可启用认证）。
- */
 public class FmcosWalletApplet extends Applet {
 
-    // ================== 状态字 ==================
-    private static final short SW_PIN_BLOCKED = (short) 0x6983; // 认证方法阻塞（ISO 7816：计数为 0 后 VERIFY 一律 6983）
+    private static final short SW_PIN_BLOCKED = (short) 0x6983;
     private static final short SW_MAC_INVALID = (short) 0x9302;
     private static final short SW_NO_ENOUGH = (short) 0x9401;
     private static final short SW_KEY_IDX = (short) 0x9403;
@@ -71,7 +27,6 @@ public class FmcosWalletApplet extends Applet {
     private static final short SW_FILE_EXISTS = (short) 0x6A82;
     private static final short SW_NO_PENDING = (short) 0x6985;
 
-    // ================== 指令 ==================
     private static final byte INS_SELECT = (byte) 0xA4;
     private static final byte INS_READ_BIN = (byte) 0xB0;
     private static final byte INS_READ_REC = (byte) 0xB2;
@@ -92,7 +47,6 @@ public class FmcosWalletApplet extends Applet {
     private static final byte INS_GET_DATA_CFG = (byte) 0xCA;
     private static final byte INS_PUT_DATA_CFG = (byte) 0xDC;
 
-    // ================== 文件标识 ==================
     private static final short FILE_MF = (short) 0x3F00;
     private static final short FILE_DF_1001 = (short) 0x1001;
     private static final short FID_MF_REC_0001 = (short) 0x0001;
@@ -113,7 +67,6 @@ public class FmcosWalletApplet extends Applet {
             '1', 'P', 'A', 'Y', '.', 'S', 'Y', 'S', '.', 'D', 'D', 'F', '0', '1'
     };
 
-    // ================== 文件类型（动态表） ==================
     private static final byte TYPE_BIN = 0;
     private static final byte TYPE_REC = 1;
     private static final byte TYPE_CYC = 2;
@@ -122,24 +75,21 @@ public class FmcosWalletApplet extends Applet {
     private static final short TX_REC_COUNT = 10;
     private static final short TX_REC_LEN = 23;
 
-    // ---- 钱包状态（EEPROM 持久化字段） ----
-    private int epBalance = 3000;       // 电子钱包余额（分）默认 30.00 元
-    private int edBalance = 3000;       // 电子存折余额（分）默认 30.00 元
-    private short onlineATC = 1;        // 联机交易序号（圈存）
-    private short offlineATC = 1;       // 脱机交易序号（消费）
+    private int epBalance = 3000;
+    private int edBalance = 3000;
+    private short onlineATC = 1;
+    private short offlineATC = 1;
     private byte pinTriesLeft = 3;
 
-    // ---- 配置 ----
-    private byte walletMode = 1;        // 默认双钱包（EP+ED）
-    private byte recordsOn = 1;         // 默认写交易记录
-    private byte authOn = 0;            // 默认不启用认证（不验证 MAC/PIN）
-    private byte atcMode = 0;           // 0=自动递增 1=固定
+    private byte walletMode = 1;
+    private byte recordsOn = 1;
+    private byte authOn = 0;
+    private byte atcMode = 0;
     private short atcVal = 0;
 
-    // ---- 会话内状态 ----
     private boolean pinVerified = false;
     private boolean transInit = false;
-    private byte transIsLoad = 0;       // 1=圈存 2=消费
+    private byte transIsLoad = 0;
     private byte transP2 = 0;
     private int transAmount = 0;
     private final byte[] transRand = new byte[4];
@@ -147,13 +97,11 @@ public class FmcosWalletApplet extends Applet {
     private final byte[] transSess = new byte[8];
     private final byte[] lastChallenge = new byte[8];
 
-    // ---- 密钥（默认与 APP 默认主密钥一致：1E02313233343536） ----
-    private byte[] mk = {(byte) 0x1E, 0x02, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36}; // 交易主密钥
-    private byte[] extKey = {};         // 外部认证密钥（默认空 → 认证直接通过）
-    private byte[] intKey = {};         // 内部认证密钥（默认空 → 回随机数）
+    private byte[] mk = {(byte) 0x1E, 0x02, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36};
+    private byte[] extKey = {};
+    private byte[] intKey = {};
     private byte[] pin = {'1', '2', '3', '4', '5', '5'};
 
-    // ---- FCI ----
     private byte[] selFci = {
             0x6F, 0x1B, (byte) 0x84, 0x09,
             (byte) 0xA0, 0x00, 0x00, 0x00, 0x03, (byte) 0x86, (byte) 0x98, 0x07, 0x01,
@@ -168,21 +116,19 @@ public class FmcosWalletApplet extends Applet {
             (byte) 0xA5, 0x03, (byte) 0x88, 0x01, 0x01
     };
 
-    // ---- 文件系统数据 ----
     private short currentDir = FILE_MF;
     private short currentEF = 0;
 
-    private final byte[] mfRec1 = new byte[16];      // 0001 卡信息记录（兼 MF 目录）
-    private final byte[] mfBin5 = new byte[16];      // 0005 卡序列号
-    private final byte[] dfRec1 = new byte[48];      // 1001/0001 应用基本信息
-    private final byte[] dfRec2 = new byte[32];      // 1001/0002 应用参数
-    private final byte[] dfBin15 = new byte[16];     // 1001/0015 公钥信息
-    private final byte[] dfBin16 = new byte[16];     // 1001/0016 私钥信息
-    private final byte[] txRec = new byte[TX_REC_COUNT * TX_REC_LEN]; // 0018 交易记录
+    private final byte[] mfRec1 = new byte[16];
+    private final byte[] mfBin5 = new byte[16];
+    private final byte[] dfRec1 = new byte[48];
+    private final byte[] dfRec2 = new byte[32];
+    private final byte[] dfBin15 = new byte[16];
+    private final byte[] dfBin16 = new byte[16];
+    private final byte[] txRec = new byte[TX_REC_COUNT * TX_REC_LEN];
     private short txCount = 0;
-    private short txHead = -1;                       // 最新记录槽位
+    private short txHead = -1;
 
-    // ---- 动态文件（APP 经 80 E0 建立） ----
     private static final short DYN_MAX = 16;
     private static final short DYN_POOL = 1536;
     private final byte[] dynValid = new byte[DYN_MAX];
@@ -199,11 +145,9 @@ public class FmcosWalletApplet extends Applet {
     private final byte[] dynPool = new byte[DYN_POOL];
     private short dynUsed = 0;
 
-    // ---- GET RESPONSE 缓存 ----
     private final byte[] lastResp = new byte[256];
     private short lastRespLen = 0;
 
-    // ---- 密码学对象 ----
     private final Cipher cipher;
     private final DESKey key8;
     private final DESKey key16;
@@ -221,9 +165,8 @@ public class FmcosWalletApplet extends Applet {
         initDefaultFiles();
     }
 
-    /** 初始化默认文件内容 */
     private void initDefaultFiles() {
-        // MF/0001 卡信息记录：目录模板（61 0B 4F 09 <钱包AID>）+ 补零
+
         byte[] dir = {
             0x61, 0x0B, 0x4F, 0x09,
             (byte) 0xA0, 0x00, 0x00, 0x00, 0x03, (byte) 0x86, (byte) 0x98, 0x07, 0x01,
@@ -231,26 +174,22 @@ public class FmcosWalletApplet extends Applet {
         };
         Util.arrayCopyNonAtomic(dir, (short) 0, mfRec1, (short) 0, (short) 16);
 
-        // MF/0005 卡序列号："FMCOS-SIM" + 版本
         byte[] ser = {'F', 'M', 'C', 'O', 'S', '-', 'S', 'I', 'M', 0x00, 0x01, 0x00,
                 0x00, 0x00, 0x00, 0x00};
         Util.arrayCopyNonAtomic(ser, (short) 0, mfBin5, (short) 0, (short) 16);
 
-        // DF1001/0001 应用基本信息：AID + 版本 + 启用日期 + 持卡人编号 + 发卡方编号
         Util.arrayCopyNonAtomic(WALLET_AID, (short) 0, dfRec1, (short) 0, (short) 9);
-        dfRec1[9] = 0x10;                                   // 应用版本 1.0
-        dfRec1[10] = 0x20; dfRec1[11] = 0x20;               // 启用日期 2020-01-01
+        dfRec1[9] = 0x10;
+        dfRec1[10] = 0x20; dfRec1[11] = 0x20;
         dfRec1[12] = 0x01; dfRec1[13] = 0x01;
         dfRec1[14] = '1'; dfRec1[15] = '2'; dfRec1[16] = '3'; dfRec1[17] = '4';
         dfRec1[18] = '5'; dfRec1[19] = '6'; dfRec1[20] = '7'; dfRec1[21] = '8';
         dfRec1[22] = 0x00; dfRec1[23] = 0x00; dfRec1[24] = 0x00; dfRec1[25] = 0x01;
 
-        // DF1001/0015 公钥信息：版本 + 算法(RSA) + 模长 + 模数摘要
         dfBin15[0] = 0x01; dfBin15[1] = 0x02; dfBin15[2] = 0x08; dfBin15[3] = 0x00;
         dfBin15[4] = 'P'; dfBin15[5] = 'U'; dfBin15[6] = 'B'; dfBin15[7] = 'K';
         dfBin15[8] = 'E'; dfBin15[9] = 'Y'; dfBin15[10] = 0x00; dfBin15[11] = 0x01;
 
-        // DF1001/0016 私钥信息：版本 + 算法(DES) + 占位（不出卡）
         dfBin16[0] = 0x01; dfBin16[1] = 0x01; dfBin16[2] = 0x08;
         dfBin16[3] = 'S'; dfBin16[4] = 'E'; dfBin16[5] = 'C'; dfBin16[6] = 'R'; dfBin16[7] = 'E';
         dfBin16[8] = 'T'; dfBin16[9] = 0x00; dfBin16[10] = 0x00; dfBin16[11] = 0x00;
@@ -258,7 +197,6 @@ public class FmcosWalletApplet extends Applet {
         syncAppParams();
     }
 
-    /** 应用参数记录（DF1001/0002）与当前配置同步 */
     private void syncAppParams() {
         Util.arrayFillNonAtomic(dfRec2, (short) 0, (short) 32, (byte) 0);
         dfRec2[0] = walletMode;
@@ -268,7 +206,7 @@ public class FmcosWalletApplet extends Applet {
         dfRec2[4] = atcMode;
         dfRec2[5] = (byte) (atcVal >> 8);
         dfRec2[6] = (byte) atcVal;
-        dfRec2[7] = (byte) (mk.length == 16 ? 0x02 : 0x01); // 01=DES 02=3DES
+        dfRec2[7] = (byte) (mk.length == 16 ? 0x02 : 0x01);
         dfRec2[8] = (byte) (offlineATC >> 8);
         dfRec2[9] = (byte) offlineATC;
         dfRec2[10] = (byte) (onlineATC >> 8);
@@ -278,7 +216,7 @@ public class FmcosWalletApplet extends Applet {
     public void process(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         if (selectingApplet()) {
-            // 被读卡器选择：钱包 AID → 应用 FCI；其他（含无 data）→ MF FCI。
+
             byte[] fci = selFci;
             try {
                 short lc = (short) (buf[ISO7816.OFFSET_LC] & 0xFF);
@@ -292,7 +230,7 @@ public class FmcosWalletApplet extends Applet {
                     }
                 }
             } catch (Exception e) {
-                // 读不到 data 时按应用 FCI 应答
+
             }
             currentDir = FILE_MF;
             currentEF = 0;
@@ -314,7 +252,7 @@ public class FmcosWalletApplet extends Applet {
                 updateBinary(apdu);
                 return;
             case INS_UPD_REC:
-                // 0x00/0x04 → UPDATE RECORD 写记录；0x80 → PUT DATA 配置
+
                 if ((buf[ISO7816.OFFSET_CLA] & 0xF0) == 0x80) {
                     putConfig(apdu);
                 } else {
@@ -372,10 +310,6 @@ public class FmcosWalletApplet extends Applet {
         currentDir = FILE_MF;
     }
 
-    // ==================================================================
-    //  文件系统
-    // ==================================================================
-
     private void selectFile(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         byte p1 = buf[ISO7816.OFFSET_P1];
@@ -388,7 +322,7 @@ public class FmcosWalletApplet extends Applet {
         short fid = 0;
         boolean byName = (p1 == 0x04);
         if (byName) {
-            // 名称选择：PSE → MF；钱包 AID / 卡模拟 AID → DF1001
+
             if (lc == (short) PSE_NAME.length
                     && Util.arrayCompare(buf, ISO7816.OFFSET_CDATA, PSE_NAME, (short) 0, lc) == 0) {
                 currentDir = FILE_MF;
@@ -410,7 +344,7 @@ public class FmcosWalletApplet extends Applet {
                 sendFci(apdu, mfFci, p2);
                 return;
             }
-            // 钱包 AID 前缀（≥7 字节）兼容
+
             if (lc >= 7 && lc <= (short) WALLET_AID.length
                     && Util.arrayCompare(buf, ISO7816.OFFSET_CDATA, WALLET_AID, (short) 0, lc) == 0) {
                 currentDir = FILE_DF_1001;
@@ -430,7 +364,7 @@ public class FmcosWalletApplet extends Applet {
         }
 
         if (fid == FILE_MF) {
-            // 任何目录下可选 MF
+
             currentDir = FILE_MF;
             currentEF = 0;
             sendFci(apdu, mfFci, p2);
@@ -482,7 +416,6 @@ public class FmcosWalletApplet extends Applet {
             }
         }
 
-        // 动态文件
         short idx = dynFind(currentDir, fid);
         if (idx >= 0) {
             if (dynType[idx] == TYPE_DF) {
@@ -500,17 +433,15 @@ public class FmcosWalletApplet extends Applet {
         ISOException.throwIt(SW_FILE_NOT_FOUND);
     }
 
-    /** P2=0C → 只回 9000；否则回 FCI */
     private void sendFci(APDU apdu, byte[] fci, byte p2) {
         if ((p2 & 0x0C) == 0x0C) {
-            return; // 9000
+            return;
         }
         byte[] buf = apdu.getBuffer();
         Util.arrayCopyNonAtomic(fci, (short) 0, buf, (short) 0, (short) fci.length);
         apdu.setOutgoingAndSend((short) 0, (short) fci.length);
     }
 
-    /** EF 选择应答 FCI：62 06 82 01 <fd> 83 02 <FID> */
     private void sendEfFci(APDU apdu, byte type, short recLen, byte recNum, short fid, byte sfi, byte p2) {
         if ((p2 & 0x0C) == 0x0C) {
             return;
@@ -538,7 +469,6 @@ public class FmcosWalletApplet extends Applet {
         apdu.setOutgoingAndSend((short) 0, (short) 9);
     }
 
-    /** 动态 DF 选择应答 FCI：6F 06 82 01 38 83 02 <FID> */
     private void sendDynDfFci(APDU apdu, short fid, byte p2) {
         if ((p2 & 0x0C) == 0x0C) {
             return;
@@ -556,13 +486,10 @@ public class FmcosWalletApplet extends Applet {
         apdu.setOutgoingAndSend((short) 0, (short) 9);
     }
 
-    // ---- 文件定位辅助 ----
-
-    /** 定位 EF：返回文件句柄描述。type: 0=BIN 1=REC 2=CYC */
-    private short[] loc = new short[6]; // [0]=src(0固定1动态) [1]=idx [2]=type [3]=size [4]=reclen [5]=numrec
+    private short[] loc = new short[6];
 
     private short locateEf(short dir, short fid, short sfi) {
-        // sfi=0 → 按 FID；否则按 SFI（当前目录优先）
+
         if (sfi != 0) {
             short f = fidBySfi(dir, sfi);
             if (f < 0) {
@@ -611,7 +538,6 @@ public class FmcosWalletApplet extends Applet {
         return -1;
     }
 
-    /** SFI → FID（当前目录优先，其次另一固定目录/动态文件） */
     private short fidBySfi(short dir, short sfi) {
         if (dir == FILE_MF) {
             if (sfi == 1) return FID_MF_REC_0001;
@@ -623,7 +549,7 @@ public class FmcosWalletApplet extends Applet {
             if (sfi == 22) return FID_DF_BIN_0016;
             if (sfi == 24) return FID_DF_REC_0018;
         }
-        // 动态文件 SFI（当前目录优先）
+
         for (short i = 0; i < DYN_MAX; i++) {
             if (dynValid[i] != 0 && dynSfi[i] == (byte) sfi && dynParent[i] == dir && dynType[i] != TYPE_DF) {
                 return dynFid[i];
@@ -655,7 +581,6 @@ public class FmcosWalletApplet extends Applet {
         return -1;
     }
 
-    // ---- READ BINARY 00 B0 ----
     private void readBinary(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short p1 = (short) (buf[ISO7816.OFFSET_P1] & 0xFF);
@@ -677,11 +602,11 @@ public class FmcosWalletApplet extends Applet {
             ISOException.throwIt(SW_FILE_NOT_FOUND);
         }
         if (loc[2] != TYPE_BIN) {
-            ISOException.throwIt(SW_NOT_BINARY); // 6981 不是二进制文件
+            ISOException.throwIt(SW_NOT_BINARY);
         }
         short size = loc[3];
         if (off >= size && !(size == 0 && off == 0)) {
-            ISOException.throwIt(SW_OFFSET_ERROR); // 6B00
+            ISOException.throwIt(SW_OFFSET_ERROR);
         }
         short remain = (short) (size - off);
         short len = (le == 0) ? remain : ((le <= remain) ? le : remain);
@@ -692,7 +617,6 @@ public class FmcosWalletApplet extends Applet {
         apdu.setOutgoingAndSend((short) 0, len);
     }
 
-    /** 从定位到的 EF 拷贝数据到 buf */
     private void readEfData(byte[] out, short outOff, short off, short len) {
         if (len <= 0) {
             return;
@@ -726,7 +650,6 @@ public class FmcosWalletApplet extends Applet {
         }
     }
 
-    /** 向定位到的 EF 写数据 */
     private void writeEfData(short off, byte[] src, short srcOff, short len) {
         if (len <= 0) {
             return;
@@ -760,14 +683,13 @@ public class FmcosWalletApplet extends Applet {
         }
     }
 
-    // ---- READ RECORD 00 B2 ----
     private void readRecord(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short p1 = (short) (buf[ISO7816.OFFSET_P1] & 0xFF);
         short p2 = (short) (buf[ISO7816.OFFSET_P2] & 0xFF);
         short le = (short) (buf[ISO7816.OFFSET_LC] & 0xFF);
         if ((p2 & 0x07) != 0x04) {
-            ISOException.throwIt(SW_WRONG_P1P2); // P2 低 3 位必须 100
+            ISOException.throwIt(SW_WRONG_P1P2);
         }
         short sfi = (short) ((p2 >> 3) & 0x1F);
         if (sfi == 0 && currentEF == 0) {
@@ -777,25 +699,20 @@ public class FmcosWalletApplet extends Applet {
             ISOException.throwIt(SW_FILE_NOT_FOUND);
         }
         if (loc[2] == TYPE_BIN || loc[2] == TYPE_DF) {
-            ISOException.throwIt(SW_NOT_BINARY); // 6981 不是记录文件
+            ISOException.throwIt(SW_NOT_BINARY);
         }
         short recLen = loc[4];
         short fileOff = recordOffset(p1);
         if (fileOff < 0) {
-            ISOException.throwIt(SW_RECORD_NOT_FOUND); // 6A83
+            ISOException.throwIt(SW_RECORD_NOT_FOUND);
         }
         if (le != 0 && le < recLen) {
-            ISOException.throwIt((short) (0x6C00 | (recLen & 0xFF))); // 6C XX 实际记录长度
+            ISOException.throwIt((short) (0x6C00 | (recLen & 0xFF)));
         }
         readEfData(buf, (short) 0, fileOff, recLen);
         apdu.setOutgoingAndSend((short) 0, recLen);
     }
 
-    /**
-     * 记录号 → 文件内偏移。
-     * 循环文件：P1=01 最新；已写入条数之外 → -1。
-     * 定长文件：P1 超出记录数/已写入数 → -1。
-     */
     private short recordOffset(short recNo) {
         if (recNo < 1) {
             return -1;
@@ -830,7 +747,6 @@ public class FmcosWalletApplet extends Applet {
         return (short) ((recNo - 1) * recLen);
     }
 
-    // ---- UPDATE BINARY 00 D6 ----
     private void updateBinary(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short p1 = (short) (buf[ISO7816.OFFSET_P1] & 0xFF);
@@ -864,7 +780,6 @@ public class FmcosWalletApplet extends Applet {
         JCSystem.commitTransaction();
     }
 
-    // ---- UPDATE RECORD 00 DC ----
     private void updateRecord(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short p1 = (short) (buf[ISO7816.OFFSET_P1] & 0xFF);
@@ -884,7 +799,7 @@ public class FmcosWalletApplet extends Applet {
             ISOException.throwIt(SW_FILE_NOT_FOUND);
         }
         if (loc[2] == TYPE_CYC) {
-            ISOException.throwIt(SW_NOT_BINARY); // 循环文件请用 APPEND RECORD
+            ISOException.throwIt(SW_NOT_BINARY);
         }
         if (loc[2] == TYPE_BIN || loc[2] == TYPE_DF) {
             ISOException.throwIt(SW_NOT_BINARY);
@@ -901,11 +816,10 @@ public class FmcosWalletApplet extends Applet {
         writeEfData(fileOff, buf, ISO7816.OFFSET_CDATA, recLen);
         JCSystem.commitTransaction();
         if (loc[0] == 0 && loc[1] == 102) {
-            // 应用参数记录被外部改写后同步内部配置镜像
+
         }
     }
 
-    // ---- APPEND RECORD 00 E2 ----
     private void appendRecord(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short p2 = (short) (buf[ISO7816.OFFSET_P2] & 0xFF);
@@ -913,7 +827,7 @@ public class FmcosWalletApplet extends Applet {
         if (lc > 0) {
             apdu.setIncomingAndReceive();
         }
-        if ((p2 & 0x07) != 0x00) { // FMCOS APPEND RECORD：b3~b1 = '000'
+        if ((p2 & 0x07) != 0x00) {
             ISOException.throwIt(SW_WRONG_P1P2);
         }
         short sfi = (short) ((p2 >> 3) & 0x1F);
@@ -958,14 +872,13 @@ public class FmcosWalletApplet extends Applet {
                 dynRecCnt[idx]++;
                 writeEfData((short) (cnt * loc[4]), buf, ISO7816.OFFSET_CDATA, loc[4]);
             } else {
-                // 固定文件只有 1 条记录 → 覆盖
+
                 writeEfData((short) 0, buf, ISO7816.OFFSET_CDATA, loc[4]);
             }
         }
         JCSystem.commitTransaction();
     }
 
-    // ---- CREATE FILE 80 E0 ----
     private void createFile(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short fid = (short) (((buf[ISO7816.OFFSET_P1] & 0xFF) << 8)
@@ -1057,7 +970,7 @@ public class FmcosWalletApplet extends Applet {
         if (sfi == 0 || sfi > 30) {
             sfi = 0;
         }
-        // SFI 冲突检测（同目录）
+
         if (sfi != 0) {
             short f = fidBySfi(currentDir, sfi);
             if (f >= 0 && f != fid) {
@@ -1071,23 +984,22 @@ public class FmcosWalletApplet extends Applet {
         dynUsed = (short) (dynUsed + size);
     }
 
-    // ---- DELETE FILE 80 E4 ----
     private void deleteFile(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short lc = (short) (buf[ISO7816.OFFSET_LC] & 0xFF);
         apdu.setIncomingAndReceive();
-        if (lc != 2) { // FMCOS：数据域 = 2 字节文件标识符
+        if (lc != 2) {
             ISOException.throwIt(SW_WRONG_LENGTH);
         }
         short fid = Util.getShort(buf, ISO7816.OFFSET_CDATA);
         short idx = dynFindAny(fid);
         if (idx < 0) {
-            ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED); // 固定文件不可删除
+            ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
         if (dynType[idx] == TYPE_DF) {
             for (short i = 0; i < DYN_MAX; i++) {
                 if (dynValid[i] != 0 && dynParent[i] == fid) {
-                    ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED); // 目录非空
+                    ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
                 }
             }
         }
@@ -1100,7 +1012,6 @@ public class FmcosWalletApplet extends Applet {
         dynValid[idx] = 0;
     }
 
-    // ---- GET RESPONSE 00 C0 ----
     private void getResponse(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short le = (short) (buf[ISO7816.OFFSET_LC] & 0xFF);
@@ -1113,7 +1024,6 @@ public class FmcosWalletApplet extends Applet {
         lastRespLen = 0;
     }
 
-    // ---- GET CHALLENGE 00 84 ----
     private void getChallenge(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         rng.generateData(lastChallenge, (short) 0, (short) 8);
@@ -1121,7 +1031,6 @@ public class FmcosWalletApplet extends Applet {
         apdu.setOutgoingAndSend((short) 0, (short) 8);
     }
 
-    // ---- 外部认证 00 82 ----
     private void externalAuth(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short lc = (short) (buf[ISO7816.OFFSET_LC] & 0xFF);
@@ -1129,7 +1038,7 @@ public class FmcosWalletApplet extends Applet {
             apdu.setIncomingAndReceive();
         }
         if (authOn == 0 || extKey.length == 0 || lc != 8) {
-            return; // 默认直接通过 9000
+            return;
         }
         byte[] calc = desBlock(extKey, lastChallenge);
         if (lc == 8 && Util.arrayCompare(calc, (short) 0, buf, ISO7816.OFFSET_CDATA, (short) 8) == 0) {
@@ -1138,7 +1047,6 @@ public class FmcosWalletApplet extends Applet {
         ISOException.throwIt(SW_MAC_INVALID);
     }
 
-    // ---- 内部认证 00 88 ----
     private void internalAuth(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         byte p1 = buf[ISO7816.OFFSET_P1];
@@ -1176,10 +1084,6 @@ public class FmcosWalletApplet extends Applet {
         apdu.setOutgoingAndSend((short) 0, (short) out.length);
     }
 
-    // ==================================================================
-    //  钱包（FM1208 / GB/T 16791 逐字节兼容）
-    // ==================================================================
-
     private void getBalance(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         if (buf[ISO7816.OFFSET_P1] != 0x00) {
@@ -1190,10 +1094,10 @@ public class FmcosWalletApplet extends Applet {
             ISOException.throwIt(SW_WRONG_P1P2);
         }
         if (ed && walletMode == 0) {
-            ISOException.throwIt(SW_WRONG_P1P2); // 单钱包模式无存折
+            ISOException.throwIt(SW_WRONG_P1P2);
         }
         if (ed && authOn != 0 && !pinVerified) {
-            ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED); // 启用认证时读存折余额需 PIN
+            ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
         }
         int bal = ed ? edBalance : epBalance;
         buf[0] = (byte) (bal >> 24);
@@ -1205,7 +1109,7 @@ public class FmcosWalletApplet extends Applet {
 
     private short useATC(boolean load) {
         if (atcMode == 1) {
-            return atcVal; // 固定 ATC
+            return atcVal;
         }
         return load ? onlineATC : offlineATC;
     }
@@ -1242,7 +1146,6 @@ public class FmcosWalletApplet extends Applet {
         }
         apdu.setIncomingAndReceive();
 
-        // Data: 密钥索引(1) + 交易金额(4) + 终端机编号(6)
         if (buf[ISO7816.OFFSET_CDATA] != 0x01) {
             ISOException.throwIt(SW_KEY_IDX);
         }
@@ -1284,10 +1187,10 @@ public class FmcosWalletApplet extends Applet {
             resp[3] = (byte) bal;
             resp[4] = (byte) (atc >> 8);
             resp[5] = (byte) atc;
-            resp[6] = 0x01;  // 密钥版本号
-            resp[7] = 0x01;  // 算法标识（01 = DES）
+            resp[6] = 0x01;
+            resp[7] = 0x01;
             Util.arrayCopyNonAtomic(transRand, (short) 0, resp, (short) 8, (short) 4);
-            // MAC1 = MAC(sess, 旧余额4+金额4+类型1+终端编号6)；类型 01=ED圈存 02=EP圈存
+
             byte[] macIn = new byte[15];
             macIn[0] = (byte) (bal >> 24);
             macIn[1] = (byte) (bal >> 16);
@@ -1306,11 +1209,11 @@ public class FmcosWalletApplet extends Applet {
             resp[3] = (byte) bal;
             resp[4] = (byte) (atc >> 8);
             resp[5] = (byte) atc;
-            resp[6] = 0;     // 透支限额 3 字节 = 0
+            resp[6] = 0;
             resp[7] = 0;
             resp[8] = 0;
-            resp[9] = 0x01;  // 密钥版本号
-            resp[10] = 0x01; // 算法标识
+            resp[9] = 0x01;
+            resp[10] = 0x01;
             Util.arrayCopyNonAtomic(transRand, (short) 0, resp, (short) 11, (short) 4);
         }
 
@@ -1333,7 +1236,7 @@ public class FmcosWalletApplet extends Applet {
             ISOException.throwIt(SW_WRONG_LENGTH);
         }
         apdu.setIncomingAndReceive();
-        // Data: 主机交易日期(4) + 主机交易时间(3) + MAC2(4)
+
         byte[] macIn = new byte[18];
         putInt(macIn, (short) 0, transAmount);
         macIn[4] = (transP2 == 0x01) ? (byte) 0x01 : (byte) 0x02;
@@ -1359,7 +1262,6 @@ public class FmcosWalletApplet extends Applet {
         short oldATC = useATC(true);
         bumpATC(true);
 
-        // TAC = MAC(MK', 新余额4+ATC2+金额4+类型1+终端编号6+日期4+时间3)
         byte[] tacIn = new byte[24];
         putInt(tacIn, (short) 0, newBal);
         tacIn[4] = (byte) (oldATC >> 8);
@@ -1391,9 +1293,7 @@ public class FmcosWalletApplet extends Applet {
             ISOException.throwIt(SW_WRONG_LENGTH);
         }
         apdu.setIncomingAndReceive();
-        // Data: 终端交易序号(4) + 终端交易日期(4) + 终端交易时间(3) + MAC1(4)
 
-        // 过程密钥 = DES(MK, rand4+脱机ATC2+终端交易序号最右2字节)
         byte[] div = new byte[8];
         Util.arrayCopyNonAtomic(transRand, (short) 0, div, (short) 0, (short) 4);
         short atc = useATC(false);
@@ -1403,7 +1303,6 @@ public class FmcosWalletApplet extends Applet {
         div[7] = buf[ISO7816.OFFSET_CDATA + 3];
         deriveSession(mk, div, transSess);
 
-        // MAC1 = MAC(sess, 金额4+类型1+终端编号6+日期4+时间3)；类型 05=ED消费 06=EP消费
         byte[] macIn = new byte[18];
         putInt(macIn, (short) 0, transAmount);
         macIn[4] = (transP2 == 0x01) ? (byte) 0x05 : (byte) 0x06;
@@ -1429,12 +1328,10 @@ public class FmcosWalletApplet extends Applet {
         short oldATC = atc;
         bumpATC(false);
 
-        // 响应: TAC(4) + MAC2(4)；MAC2 = MAC(sess, 金额4)
         byte[] amountB = new byte[4];
         putInt(amountB, (short) 0, transAmount);
         byte[] mac2 = mac(transSess, amountB, (short) 0, (short) 4);
 
-        // TAC = MAC(MK', 金额4+类型1+终端编号6+终端序号4+日期4+时间3)
         byte[] tacIn = new byte[22];
         putInt(tacIn, (short) 0, transAmount);
         tacIn[4] = ed ? (byte) 0x05 : (byte) 0x06;
@@ -1457,8 +1354,6 @@ public class FmcosWalletApplet extends Applet {
         apdu.setOutgoingAndSend((short) 0, (short) 8);
     }
 
-    /** 写交易记录（0018 循环文件最新一条）
-     *  rec: 类型1 + ATC2 + 金额4 + 终端6 + 日期4 + 时间3 + 新余额低3字节 */
     private void appendTxRecord(byte type, short atc, int amount, byte[] src, short dtOff, int newBal) {
         txHead = (short) ((txHead + 1) % TX_REC_COUNT);
         if (txCount < TX_REC_COUNT) {
@@ -1480,10 +1375,6 @@ public class FmcosWalletApplet extends Applet {
         syncAppParams();
     }
 
-    // ==================================================================
-    //  VERIFY / 配置
-    // ==================================================================
-
     private void verify(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short lc = (short) (buf[ISO7816.OFFSET_LC] & 0xFF);
@@ -1494,10 +1385,7 @@ public class FmcosWalletApplet extends Applet {
         if (pinTriesLeft == 0) {
             ISOException.throwIt(SW_PIN_BLOCKED);
         }
-        // 双格式兼容：
-        //  A) 明文/ASCII PIN：数据长度 == 卡内 PIN 长度且逐字节相等（钱包页/设置页模式）
-        //  B) hex 编码 PIN：主页 PbocEngine.verifyPin 把 "123455" 按 hex 解析发送（3 字节），
-        //     卡内 ASCII PIN 每两个字符解出一个 hex 字节后比较（lc*2 == pin.length 才尝试）
+
         boolean ok = false;
         if (lc == (short) pin.length) {
             ok = (Util.arrayCompare(buf, ISO7816.OFFSET_CDATA, pin, (short) 0, lc) == 0);
@@ -1523,7 +1411,6 @@ public class FmcosWalletApplet extends Applet {
         }
     }
 
-    /** ASCII 字符 → hex 值（非法返回 -1） */
     private static int hexVal(byte c) {
         if (c >= '0' && c <= '9') return c - '0';
         if (c >= 'A' && c <= 'F') return c - 'A' + 10;
@@ -1534,19 +1421,19 @@ public class FmcosWalletApplet extends Applet {
     private void getConfig(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         short o = 0;
-        o = putTlv(buf, o, (byte) 0x01, mk);   // 01 交易主密钥（圈存/消费/TAC）
-        o = putTlv(buf, o, (byte) 0x02, extKey); // 02 外部认证密钥
-        o = putTlv(buf, o, (byte) 0x03, intKey); // 03 内部认证密钥
-        o = putTlv(buf, o, (byte) 0x04, pin);   // 04 PIN
+        o = putTlv(buf, o, (byte) 0x01, mk);
+        o = putTlv(buf, o, (byte) 0x02, extKey);
+        o = putTlv(buf, o, (byte) 0x03, intKey);
+        o = putTlv(buf, o, (byte) 0x04, pin);
         buf[o++] = 0x05; buf[o++] = 0x01; buf[o++] = authOn;
         buf[o++] = 0x06; buf[o++] = 0x01; buf[o++] = atcMode;
         buf[o++] = 0x07; buf[o++] = 0x02;
         buf[o++] = (byte) (atcVal >> 8); buf[o++] = (byte) atcVal;
         buf[o++] = 0x08; buf[o++] = 0x01; buf[o++] = walletMode;
         buf[o++] = 0x09; buf[o++] = 0x01; buf[o++] = recordsOn;
-        buf[o++] = 0x0C; buf[o++] = 0x01; buf[o++] = pinTriesLeft; // PIN 剩余尝试次数
-        o = putTlv(buf, o, (byte) 0x0A, selFci);   // 0A 钱包应用选择应答 FCI
-        o = putTlv(buf, o, (byte) 0x0B, mfFci);    // 0B MF(3F00)/PSE 选择应答 FCI
+        buf[o++] = 0x0C; buf[o++] = 0x01; buf[o++] = pinTriesLeft;
+        o = putTlv(buf, o, (byte) 0x0A, selFci);
+        o = putTlv(buf, o, (byte) 0x0B, mfFci);
         apdu.setOutgoingAndSend((short) 0, o);
     }
 
@@ -1568,14 +1455,14 @@ public class FmcosWalletApplet extends Applet {
             short len = (short) (buf[i + 1] & 0xFF);
             short val = (short) (i + 2);
             switch (tag) {
-                case 0x01: // 交易主密钥
+                case 0x01:
                     if (len == 8 || len == 16) {
                         byte[] k = new byte[len];
                         Util.arrayCopyNonAtomic(buf, val, k, (short) 0, len);
                         mk = k;
                     }
                     break;
-                case 0x02: // 外部认证密钥
+                case 0x02:
                     if (len == 8 || len == 16) {
                         byte[] k = new byte[len];
                         Util.arrayCopyNonAtomic(buf, val, k, (short) 0, len);
@@ -1584,7 +1471,7 @@ public class FmcosWalletApplet extends Applet {
                         extKey = new byte[0];
                     }
                     break;
-                case 0x03: // 内部认证密钥
+                case 0x03:
                     if (len == 8 || len == 16) {
                         byte[] k = new byte[len];
                         Util.arrayCopyNonAtomic(buf, val, k, (short) 0, len);
@@ -1593,7 +1480,7 @@ public class FmcosWalletApplet extends Applet {
                         intKey = new byte[0];
                     }
                     break;
-                case 0x04: // PIN
+                case 0x04:
                     if (len >= 4 && len <= 12) {
                         byte[] p = new byte[len];
                         Util.arrayCopyNonAtomic(buf, val, p, (short) 0, len);
@@ -1601,31 +1488,31 @@ public class FmcosWalletApplet extends Applet {
                         pinTriesLeft = 3;
                     }
                     break;
-                case 0x05: // 认证开关
+                case 0x05:
                     if (len == 1) authOn = buf[val];
                     break;
-                case 0x06: // ATC 模式
+                case 0x06:
                     if (len == 1) atcMode = buf[val];
                     break;
-                case 0x07: // ATC 固定值
+                case 0x07:
                     if (len == 2) {
                         atcVal = (short) (((buf[val] & 0xFF) << 8) | (buf[val + 1] & 0xFF));
                     }
                     break;
-                case 0x08: // 钱包模式
+                case 0x08:
                     if (len == 1) walletMode = buf[val];
                     break;
-                case 0x09: // 记录开关
+                case 0x09:
                     if (len == 1) recordsOn = buf[val];
                     break;
-                case 0x0A: // 自定义钱包应用选择应答 FCI
+                case 0x0A:
                     if (len >= 4 && len <= 64 && (buf[val] & 0xFF) == 0x6F) {
                         byte[] f = new byte[len];
                         Util.arrayCopyNonAtomic(buf, val, f, (short) 0, len);
                         selFci = f;
                     }
                     break;
-                case 0x0B: // 自定义 MF(3F00)/PSE 选择应答 FCI
+                case 0x0B:
                     if (len >= 4 && len <= 64 && (buf[val] & 0xFF) == 0x6F) {
                         byte[] f = new byte[len];
                         Util.arrayCopyNonAtomic(buf, val, f, (short) 0, len);
@@ -1633,18 +1520,13 @@ public class FmcosWalletApplet extends Applet {
                     }
                     break;
                 default:
-                    break; // 未知标签忽略
+                    break;
             }
             i = (short) (val + len);
         }
         syncAppParams();
     }
 
-    // ==================================================================
-    //  密码学原语
-    // ==================================================================
-
-    /** DES/3DES ECB 单块加密。8 字节密钥 = DES，16 字节 = 3DES EDE(2key)。 */
     private byte[] desBlock(byte[] key, byte[] in8) {
         byte[] out = new byte[8];
         if (key.length == 8) {
@@ -1658,7 +1540,6 @@ public class FmcosWalletApplet extends Applet {
         return out;
     }
 
-    /** DES/3DES ECB 单块解密（内部认证用）。 */
     private byte[] desDecrypt(byte[] key, byte[] in8) {
         byte[] out = new byte[8];
         if (key.length == 8) {
@@ -1672,15 +1553,13 @@ public class FmcosWalletApplet extends Applet {
         return out;
     }
 
-    /** 过程密钥派生：SESSION = DES(MK, div8)。 */
     private void deriveSession(byte[] mk, byte[] div8, byte[] out8) {
         byte[] r = desBlock(mk, div8);
         Util.arrayCopyNonAtomic(r, (short) 0, out8, (short) 0, (short) 8);
     }
 
-    /** PBOC CBC-MAC：数据 0x80 填充到 8 倍数、零 IV、逐块异或+加密，取最终块前 4 字节。 */
     private byte[] mac(byte[] key, byte[] data, short off, short len) {
-        short n = (short) (((len / 8) + 1) * 8); // 总是追加 0x80 块
+        short n = (short) (((len / 8) + 1) * 8);
         byte[] iv = new byte[8];
         byte[] padded = new byte[n];
         Util.arrayCopyNonAtomic(data, off, padded, (short) 0, len);
@@ -1696,7 +1575,6 @@ public class FmcosWalletApplet extends Applet {
         return out;
     }
 
-    /** MK 折半：16 字节密钥左右 8 字节异或折叠为 8 字节；8 字节原样返回。 */
     private byte[] reduceKey(byte[] k) {
         if (k.length == 8) {
             return k;

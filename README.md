@@ -9,7 +9,7 @@
 ## 目录结构
 
 ```
-├── card-applet/src/FmcosWalletApplet.java   # 卡内 Applet 源码（v2.3）
+├── FmcosWalletApplet.java                   # 卡内 Applet 源码（v2.3，无注释精简版）
 ├── android-app/                              # APP 完整 apktool 工程（smali/资源/清单，v1.4.7）
 ├── app-java-src/                             # APP 新增/修改类的 Java 源（编译工具链入口）
 │   ├── src/com/gpjpboc/toolkit/             #   WalletActivity / FileSysActivity / Config 等
