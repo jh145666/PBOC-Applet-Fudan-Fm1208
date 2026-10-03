@@ -24,7 +24,9 @@
 ├── keystore/gpjpboc.jks                      # 签名证书（密码见 build_apk.sh）
 ├── tools/                                    # apktool / ecj / r8 / uber-apk-signer / android.jar
 ├── docs/                                     # 使用说明、测试报告
-└── release/JavaCOS-PBOC工具箱-v1.4.7.apk     # 最新成品
+└── release/                                # 发布成品
+    ├── JavaCOS-PBOC工具箱-v1.4.7.apk        # Android 工具箱 APP
+    └── toolkit.cap                          # 卡内 Applet 安装文件（GlobalPlatformPro 安装）
 ```
 
 ## 快速开始
