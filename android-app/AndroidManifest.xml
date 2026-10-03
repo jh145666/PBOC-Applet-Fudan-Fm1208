@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?><manifest xmlns:android="http://schemas.android.com/apk/res/android" android:compileSdkVersion="30" android:compileSdkVersionCodename="11" package="com.gpjpboc.toolkit" platformBuildVersionCode="30" platformBuildVersionName="11">
+    <uses-permission android:name="org.simalliance.openmobileapi.SMARTCARD"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.NFC"/>
+    <uses-feature android:name="android.hardware.nfc" android:required="true"/>
+    <application android:allowBackup="true" android:appComponentFactory="android.support.v4.app.CoreComponentFactory" android:icon="@drawable/ic_launcher" android:label="JavaCOS/PBOC 工具箱" android:theme="@style/AppTheme">
+        <activity android:name="at.fhooe.usmile.gpjshell.MainActivity" android:screenOrientation="portrait"/>
+        <activity android:name="at.fhooe.usmile.gpjshell.AppletListActivity"/>
+        <activity android:label="@string/title_activity_applet_detail" android:name="at.fhooe.usmile.gpjshell.AppletDetailActivity" android:screenOrientation="portrait" android:theme="@android:style/Theme.Dialog"/>
+        <activity android:label="@string/title_activity_add_keyset" android:name="at.fhooe.usmile.gpjshell.AddKeysetActivity" android:screenOrientation="portrait" android:theme="@android:style/Theme.Dialog"/>
+        <activity android:label="@string/title_applet_install_test" android:name="at.fhooe.usmile.gpjshell.AppletInstallTest" android:screenOrientation="portrait" android:theme="@android:style/Theme.Dialog"/>
+        <activity android:label="@string/title_echo_test" android:name="at.fhooe.usmile.gpjshell.ApduEchoTest" android:screenOrientation="portrait" android:theme="@android:style/Theme.Dialog"/>
+        <activity android:label="@string/title_activity_add_channel_set" android:name="at.fhooe.usmile.gpjshell.AddChannelSetActivity" android:screenOrientation="portrait" android:theme="@android:style/Theme.Dialog"/>
+        <activity android:label="@string/title_activity_set_install_param" android:name="at.fhooe.usmile.gpjshell.SetInstallParamActivity" android:screenOrientation="portrait" android:theme="@android:style/Theme.Dialog"/>
+        <activity android:label="@string/title_activity_get_data" android:name="at.fhooe.usmile.gpjshell.GetDataActivity" android:screenOrientation="portrait" android:theme="@android:style/Theme.Dialog"/>
+        <activity android:exported="true" android:label="PBOC" android:name="org.pboc.fm1208.MainActivity" android:screenOrientation="portrait" android:theme="@style/Theme.PBOC">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <activity android:label="文件系统" android:name="com.gpjpboc.toolkit.FileSysActivity" android:screenOrientation="portrait" android:theme="@style/Theme.PBOC"/>
+        <activity android:label="钱包操作" android:name="com.gpjpboc.toolkit.WalletActivity" android:screenOrientation="portrait" android:theme="@style/Theme.PBOC"/>
+        <activity android:label="Applet设置" android:name="com.gpjpboc.toolkit.AppletSettingsActivity" android:screenOrientation="portrait" android:theme="@style/Theme.PBOC"/>
+    </application>
+</manifest>

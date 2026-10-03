@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:gravity="center" android:orientation="vertical" android:id="@id/applet_install_test" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <FrameLayout android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_weight="0.54">
+        <ProgressBar android:layout_gravity="center" android:id="@id/applet_install_test_progress" android:layout_width="204.0dip" android:layout_height="130.0dip" android:indeterminate="false" android:minHeight="10.0dip" style="@android:style/Widget.ProgressBar.Horizontal" />
+    </FrameLayout>
+</LinearLayout>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:id="@id/RelativeLayout1" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <TextView android:textStyle="bold" android:id="@id/detAppl_readableTitle" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="Applet AID" />
+    <TextView android:textStyle="italic" android:id="@id/detAppl_priviliges" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="权限信息" />
+    <TextView android:textStyle="bold" android:id="@id/tv_applet_aid_title" android:paddingTop="4.0pt" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="可执行AID列表" />
+    <TextView android:id="@id/detAppl_allIDs" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="" />
+</LinearLayout>

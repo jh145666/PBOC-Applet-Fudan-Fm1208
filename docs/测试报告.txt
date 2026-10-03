@@ -1,0 +1,193 @@
+==== FmcosWalletApplet v2.3 + APP v1.4.6 互操作测试报告 ====
+时间: 2026-09-29 19:09:14
+APP 侧：dex 结构检查 0 问题（重复方法/非法访问全库扫描）；applet 回归 162/162
+
+== 安装 applet (AID A00000000386980701) ==
+  [PASS] 选择 applet → 9000
+  [PASS] applet FCI 前缀 6F
+
+== T1 智能扫描（APP 命令序列） ==
+  [PASS] SELECT 3F00 (P2=00) → 9000
+  [PASS] MF FCI 含 88 01 01（目录 SFI）
+  [PASS] SELECT 3F00 (P2=0C 兼容) → 9000 无数据
+  [PASS] SELECT PSE → 9000 MF FCI
+  [PASS] SELECT 不存在 FID → 6A82
+  [PASS] MF 命中 0001/0005
+  [PASS] MF 命中 DF 1001
+  [PASS] MF 命中数恰为 3
+  [PASS] MF/0001 读记录1 → 9000 16B
+  [PASS] MF/0001 内容=目录模板 61 0B 4F 09 AID
+  [PASS] MF/0001 SFI=1 读记录 → 同上
+  [PASS] MF/0001 记录2 → 6A83
+  [PASS] MF/0005 读二进制 → 16B
+  [PASS] MF/0005 内容 FMCOS-SIM
+  [PASS] MF/0005 偏移越界 → 6B00
+  [PASS] MF/0005 SFI=5 读 → 16B
+  [PASS] MF/0005 Le=8 → 8B
+  [PASS] MF/0005 FCI=62 06 82 01 00 83 02 0005
+  [PASS] MF/0001 FCI=62 06 82 01 01 83 02 0001
+
+== T2 DF_1001 应用目录 ==
+  [PASS] SELECT 1001 → 9000 ADF FCI
+  [PASS] DF1001 命中 0001/0002/0015/0016/0018
+  [PASS] DF1001 命中数恰为 5
+  [PASS] DF/0001 应用基本信息 → 48B
+  [PASS] DF/0001 前缀 = AID
+  [PASS] DF/0002 应用参数 → 32B
+  [PASS] DF/0002 [0]=walletMode=1 [1]=recordsOn=1
+  [PASS] DF/0015 公钥信息 → 16B
+  [PASS] DF/0016 私钥信息 → 16B
+  [PASS] DF/0018 SFI=24 读记录1（空）→ 6A83
+  [PASS] DF/0015 SFI=21 读 → 16B
+  [PASS] DF/0018 FCI=62 06 82 01 02 83 02 0018（循环）
+  [PASS] READ RECORD 于二进制文件 → 6981
+  [PASS] READ BINARY 于记录文件 → 6981
+  [PASS] READ RECORD P2 低3位≠100 → 6A86
+  [PASS] READ RECORD Le 过短 → 6C30（记录长48）
+
+== T3 钱包操作（WalletActivity 序列） ==
+  [PASS] ED 读余额 → 9000 默认 30.00 元
+  [PASS] EP 读余额 → 9000 默认 30.00 元
+  [PASS] EP 圈存初始化 → 16B
+  [PASS] MAC1 校验通过（APP 复算一致）
+  [PASS] EP 圈存（错误 MAC2 默认放行）→ 9000 + TAC4
+  [PASS] EP 圈存后余额 40.00 元
+  [PASS] ED 圈存（正确 MAC2）→ 9000 + TAC4
+  [PASS] ED 圈存后余额 35.00 元
+  [PASS] ED 消费初始化（无 PIN）→ 15B
+  [PASS] ED 消费 → 9000 TAC4+MAC2
+  [PASS] 消费 MAC2 校验通过
+  [PASS] ED 消费后余额 28.00 元
+  [PASS] EP 消费 → 9000
+  [PASS] EP 消费后余额 28.00 元
+  [PASS] 超额消费初始化 → 9401
+  [PASS] 密钥索引≠01 → 9403
+  [PASS] 未初始化圈存 → 6985
+
+== T4 交易记录（EF_DF_REC_0018） ==
+  [PASS] 记录1 → 23B
+  [PASS] 最新记录类型=06（EP消费）
+  [PASS] 最新记录金额=1200
+  [PASS] 最新记录终端号=000000000001
+  [PASS] 记录2 类型=05（ED消费）
+  [PASS] 记录3 类型=01（ED圈存）
+  [PASS] 记录4 类型=02（EP圈存）
+  [PASS] 记录5（未写满）→ 6A83
+  [PASS] 选择 0018 后当前文件读记录1 → 23B
+
+== T5 配置（AppletSettingsActivity 序列） ==
+  [PASS] 80CA 读配置 → 9000
+  [PASS] 配置含 tag01 主密钥默认 1E02..36
+  [PASS] 配置含 tag05 authOn=0
+  [PASS] 配置含 tag06 atcMode=0
+  [PASS] 配置含 tag07 atcVal
+  [PASS] 配置含 tag08 walletMode=1
+  [PASS] 配置含 tag09 recordsOn=1
+  [PASS] 配置含 tag0A/0B FCI
+  [PASS] 80DC 改主密钥+单钱包 → 9000
+  [PASS] 单钱包模式 ED 余额 → 6A86
+  [PASS] 单钱包模式 EP 余额正常
+  [PASS] 恢复双钱包后 ED 余额正常
+  [PASS] 80DC 固定 ATC=0x0099 → 9000
+  [PASS] 固定 ATC 生效（resp ATC=0099）
+  [PASS] 消费第二步（默认不验 MAC1）→ 9000
+
+== T6 认证开关（默认放行 / 启用后校验） ==
+  [PASS] authOn=1 且未验 PIN → ED 余额 6982
+  [PASS] 错误 PIN → 63Cx
+  [PASS] 正确 PIN → 9000
+  [PASS] 验 PIN 后 ED 余额 → 9000
+  [PASS] authOn=1 错误 MAC2 → 9302
+  [PASS] authOn=0 错误 MAC2 → 放行 9000
+  [PASS] GET CHALLENGE → 8B
+  [PASS] 外部认证（默认）→ 9000
+  [PASS] 内部认证（无密钥）→ 8B 随机
+
+== T7 动态文件（80E0/00D6/00DC/00E2/80E4） ==
+  [PASS] CREATE 0010 BIN → 9000
+  [PASS] 重复 CREATE → 6A82
+  [PASS] 新建 BIN 读 → 8B 全零
+  [PASS] UPDATE BINARY → 9000
+  [PASS] 回读 = AABBCCDD00112233
+  [PASS] SFI=16 读 0010 → 8B
+  [PASS] CREATE 0011 REC 8×3 → 9000
+  [PASS] APPEND 记录1 → 9000
+  [PASS] APPEND 记录2 → 9000
+  [PASS] 读记录1 → 1122334455667788
+  [PASS] 读记录2 → 8877665544332211
+  [PASS] 记录3 未写 → 6A83
+  [PASS] UPDATE 记录1 → 9000
+  [PASS] 更新后读回 = A1B2...
+  [PASS] CREATE DF 1010 → 9000
+  [PASS] SELECT 动态 DF → 9000 FCI 82 01 38
+  [PASS] DF1010 下 CREATE 0020 → 9000
+  [PASS] DF1010/0020 写读 → CAFEBABE
+  [PASS] DELETE 0010 → 9000
+  [PASS] 删除后 SELECT → 6A82
+  [PASS] DELETE 固定文件 → 6985
+  [PASS] DELETE 非空 DF → 6985
+  [PASS] UPDATE MF/0005 → 9000
+  [PASS] 卡序列号回读一致
+  [PASS] GET RESPONSE 无挂起 → 6985
+
+== T8 循环记录滚动覆盖（0018 满 10 条） ==
+  [PASS] 循环记录恰 10 条（滚动覆盖）
+  [PASS] 最新记录为最后交易（类型06）
+
+== T9 选择不影响钱包状态 ==
+  [PASS] 多次选择后余额不变
+
+== T10 APP 命令字节流回归（17B init 带 Le / 16B 圈存 / 20B 消费 / 12位PIN） ==
+  [PASS] APP 圈存 init(17B, Le=10) → 9000 16B
+  [PASS] APP 圈存 MAC1 终端号完整（6字节 tid）
+  [PASS] APP 圈存 fin(16B) → 9000 TAC4
+  [PASS] APP 圈存后 EP 余额 = 原余额+10.00
+  [PASS] APP 消费 init(17B, Le=0F) → 9000 15B
+  [PASS] APP 消费(20B) → 9000 TAC4+MAC2
+  [PASS] APP 消费 MAC2 校验
+  [PASS] APP 消费后 EP 余额 = 圈存后-5.00
+  [PASS] 80DC 下发 12 位 PIN → 9000
+  [PASS] 12 位 PIN 验证 → 9000
+  [PASS] 恢复 6 位 PIN → 9000
+  [PASS] 恢复后 6 位 PIN 验证 → 9000
+  [PASS] DF1001 子文件数=5（递归修复回归）
+  [PASS] DF/0001 与 MF/0001 内容不同（防父目录内容误扫）
+
+== T11 PIN 次数限制 + 剩余次数上报 + PSE 记录发现（v1.4.2） ==
+  [PASS] 80DC 恢复默认 PIN 123455 → 9000
+  [PASS] 默认 PIN 123455 验证 → 9000（三处统一基准）
+  [PASS] 错 1 次 → 63C2
+  [PASS] 错 2 次 → 63C1
+  [PASS] 正确验证 → 9000（计数恢复 3）
+  [PASS] 错 1 次 → 63C2
+  [PASS] 错 2 次 → 63C1
+  [PASS] 错 3 次 → 63C0（即将锁死）
+  [PASS] 锁死后正确 PIN 也 → 6983
+  [PASS] 锁死后错误 PIN → 6983（不再倒计）
+  [PASS] 锁死状态 getConfig 0x0C=0
+  [PASS] 80DC 重写 PIN → 9000（解锁+重置）
+  [PASS] 解锁后正确 PIN → 9000
+  [PASS] 解锁后 getConfig 0x0C=3
+  [PASS] SELECT PSE(1PAY.SYS.DDF01) → 9000
+  [PASS] PSE 记录解析出应用 AID
+  [PASS] SELECT PPSE（无此目录）→ 非 9000 容错
+  [PASS] PSE 发现后恢复 MF → 9000
+  [PASS] 2F00 区间建测试文件 → 9000
+  [PASS] 智能扫描新增 2F00 区间能发现文件
+  [PASS] 清理 2F00 测试文件 → 9000
+
+== T12 双格式 PIN（主页 hex 模式 + 钱包页 ASCII 模式，v1.4.3） ==
+  [PASS] 主页 hex 模式 VERIFY(3B) → 9000（applet 双格式兼容）
+  [PASS] 主页 P2=02 VERIFY → 9000（忽略 P2 密钥标识）
+  [PASS] 钱包页 ASCII 模式 VERIFY(6B) → 9000
+  [PASS] hex 模式错误 PIN → 63C2
+  [PASS] ASCII 模式错误 PIN → 63C1
+  [PASS] 正确 PIN 恢复计数 → 9000
+  [PASS] 80DC 改 5 位 PIN 12345 → 9000
+  [PASS] 5 位 PIN ASCII VERIFY → 9000
+  [PASS] 5 位 PIN 时 hex 猜测(2B) → 63C2（长度不符不误判）
+  [PASS] 5 位 PIN 恢复 → 9000
+  [PASS] 恢复默认 PIN 123455 → 9000
+  [PASS] arrayCompare 真卡语义下按名选择仍有效
+
+===== 结果: PASS 162 / FAIL 0 =====
